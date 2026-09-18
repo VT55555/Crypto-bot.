@@ -4,8 +4,8 @@ import telebot
 import ccxt
 import pandas as pd
 
-# === ВСТАВЬТЕ ВАШИ ДАННЫЕ ===
-TOKEN = '563940267:AAGoGY8KsJqh1LHaUuj5UIMPPKQj65-Snys'  # Ваш токен в кавычках
+# === ВАШІ ДАНІ ЗБЕРЕЖЕНО ===
+TOKEN = '563940267:AAGoGY8KsJqh1LHaUuj5Uj5UI...'
 CHAT_ID = 5506822047
 
 bot = telebot.TeleBot(TOKEN)
@@ -13,53 +13,57 @@ last_processed_candle = None
 
 def monitor_market():
     global last_processed_candle
+    
+    exchange = ccxt.binance({
+        'enableRateLimit': True,
+    })
+    
+    symbol = 'BTC/USDT'
+    timeframe = '1h'
+
+    print(f"Моніторинг ринку для {symbol} запущено...")
+
     while True:
         try:
-            symbol = 'BTC/USDT'
-            timeframe = '1h'
-            
-            exchange = ccxt.binance()
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=100)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
-            df['ema_fast'] = df['close'].ewm(span=20, adjust=False).mean()
-            df['ema_slow'] = df['close'].ewm(span=50, adjust=False).mean()
-            
-            high_low = df['high'] - df['low']
-            high_close = (df['high'] - df['close'].shift()).abs()
-            low_close = (df['low'] - df['close'].shift()).abs()
-            df['tr'] = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            current_candle = df['timestamp'].iloc[-1]
+            if last_processed_candle == current_candle:
+                time.sleep(30)
+                continue
+
+            df['ema_fast'] = df['close'].ewm(span=9, adjust=False).mean()
+            df['ema_slow'] = df['close'].ewm(span=21, adjust=False).mean()
+
+            df['high_low'] = df['high'] - df['low']
+            df['high_close'] = (df['high'] - df['close'].shift()).abs()
+            df['low_close'] = (df['low'] - df['close'].shift()).abs()
+            df['tr'] = pd.concat([df['high_low'], df['high_close'], df['low_close']], axis=1).max(axis=1)
             df['atr'] = df['tr'].rolling(window=14).mean()
+
+            last_row = df.iloc(-1)
+            message = (
+                f"📊 *Сигнал ринку {symbol}*\n"
+                f"• Таймфрейм: `{timeframe}`\n"
+                f"• Ціна закриття: `{last_row['close']}`\n"
+                f"• EMA (9): `{last_row['ema_fast']:.2f}`\n"
+                f"• EMA (21): `{last_row['ema_slow']:.2f}`\n"
+                f"• ATR (14): `{last_row['atr']:.2f}`"
+            )
             
-            latest = df.iloc[-1]
-            prev = df.iloc[-2]
-            candle_time = latest['timestamp']
+            bot.send_message(CHAT_ID, message, parse_mode='Markdown')
+            last_processed_candle = current_candle
             
-            if candle_time != last_processed_candle:
-                price = latest['close']
-                atr = latest['atr']
-                msg = None
-                
-                if prev['ema_fast'] <= prev['ema_slow'] and latest['ema_fast'] > latest['ema_slow']:
-                    sl = price - (1.5 * atr)
-                    tp = price + (3.0 * atr)
-                    msg = f"🚨 **АВТО-СИГНАЛ: LONG {symbol}**\n\n🎯 Вход: ${price:.2f}\n🛑 SL: ${sl:.2f}\n✅ TP: ${tp:.2f}"
-                elif prev['ema_fast'] >= prev['ema_slow'] and latest['ema_fast'] < latest['ema_slow']:
-                    sl = price + (1.5 * atr)
-                    tp = price - (3.0 * atr)
-                    msg = f"🚨 **АВТО-СИГНАЛ: SHORT {symbol}**\n\n🎯 Вход: ${price:.2f}\n🛑 SL: ${sl:.2f}\n✅ TP: ${tp:.2f}"
-                
-                if msg:
-                    bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                    last_processed_candle = candle_time
+            time.sleep(60)
+
         except Exception as e:
-            print(f"Ошибка: {e}")
-        time.sleep(180)
+            print(f"Сталася помилка: {e}")
+            time.sleep(30)
 
-threading.Thread(target=monitor_market, daemon=True).start()
+if __name__ == '__main__':
+    t = threading.Thread(target=monitor_market)
+    t.daemon = True
+    t.start()
 
-@bot.message_handler(commands=['start', 'ping'])
-def send_welcome(message):
-    bot.reply_to(message, "Бот работает и анализирует рынок 24/7!")
-
-bot.polling(non_stop=True)
+    bot.infinity_polling()
