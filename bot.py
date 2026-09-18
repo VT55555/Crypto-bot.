@@ -1,43 +1,34 @@
 import os
 import time
 import threading
+import json
+import urllib.request
 import telebot
-import ccxt
-import pandas as pd
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 TOKEN = '8563940267:AAGoGY8KsJqh1LHaUuj5UIMPPKQj65-Sn'
 CHAT_ID = 5506822047
 
 bot = telebot.TeleBot(TOKEN)
-last_processed_candle = None
 
 def monitor_market():
-    global last_processed_candle
-    exchange = ccxt.binance({'enableRateLimit': True})
-    symbol = 'BTC/USDT'
-    timeframe = '1h'
-    print(f"Моніторинг ринку для {symbol}")
+    print("Моніторинг ринку запущено")
     while True:
         try:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=2)
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            current_candle = df.iloc[-1]['timestamp']
-            
-            if last_processed_candle != current_candle:
-                last_processed_candle = current_candle
-                price = df.iloc[-1]['close']
-                bot.send_message(CHAT_ID, f"Оновлення {symbol}: ціна {price}")
-            
-            time.sleep(60)
+            url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                data = json.loads(response.read().decode())
+                price = data['bitcoin']['usd']
+                bot.send_message(CHAT_ID, f"Оновлення BTC/USDT: ціна ${price}")
         except Exception as e:
-            print(f"Помилка: {e}")
-            time.sleep(30)
+            print(f"Помилка запиту ціни: {e}")
+        time.sleep(60)
 
-# Запускаємо бота у фоновому потоці
+# Запускаємо моніторинг у фоновому потоці
 threading.Thread(target=monitor_market, daemon=True).start()
 
-# Головний процес миттєво запускає веб-сервер для Render
+# Вебсервер для Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
