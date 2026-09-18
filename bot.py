@@ -1,4 +1,4 @@
-2import time
+import time
 import threading
 import telebot
 import ccxt
