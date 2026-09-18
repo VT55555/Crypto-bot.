@@ -5,7 +5,7 @@ import ccxt
 import pandas as pd
 
 # === ВАШІ ДАНІ ЗБЕРЕЖЕНО ===
-TOKEN = '  8563940267:AAGoGY8KsJqhlLHaUuj5UIMPPKQj65-Snys '
+TOKEN ='8563940267:AAGoGY8KsJqhlLHaUuj5UIMPPKQj65-Snys '
 CHAT_ID = 5506822047
 
 bot = telebot.TeleBot(TOKEN)
