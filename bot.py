@@ -1,26 +1,12 @@
+import os
 import time
 import threading
 import telebot
 import ccxt
 import pandas as pd
-import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 
-def run_server():
-    class SimpleHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Bot is running!")
-    
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_server, daemon=True).start()2
-# === ВАШІ ДАНІ ЗБЕРЕЖЕНО ===
-TOKEN ='8563940267:AAGoGY8KsJqhlLHaUuj5UIMPPKQj65-Snys'
+TOKEN = '8563940267:AAGoGY8KsJqh1LHaUuj5UIMPPKQj65-Sn'
 CHAT_ID = 5506822047
 
 bot = telebot.TeleBot(TOKEN)
@@ -28,57 +14,34 @@ last_processed_candle = None
 
 def monitor_market():
     global last_processed_candle
-    
-    exchange = ccxt.binance({
-        'enableRateLimit': True,
-    })
-    
+    exchange = ccxt.binance({'enableRateLimit': True})
     symbol = 'BTC/USDT'
     timeframe = '1h'
-
-    print(f"Моніторинг ринку для {symbol} запущено...")
-
+    print(f"Моніторинг ринку для {symbol}")
     while True:
         try:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=100)
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=2)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            current_candle = df.iloc[-1]['timestamp']
             
-            current_candle = df['timestamp'].iloc[-1]
-            if last_processed_candle == current_candle:
-                time.sleep(30)
-                continue
-
-            df['ema_fast'] = df['close'].ewm(span=9, adjust=False).mean()
-            df['ema_slow'] = df['close'].ewm(span=21, adjust=False).mean()
-
-            df['high_low'] = df['high'] - df['low']
-            df['high_close'] = (df['high'] - df['close'].shift()).abs()
-            df['low_close'] = (df['low'] - df['close'].shift()).abs()
-            df['tr'] = pd.concat([df['high_low'], df['high_close'], df['low_close']], axis=1).max(axis=1)
-            df['atr'] = df['tr'].rolling(window=14).mean()
-
-            last_row = df.iloc(-1)
-            message = (
-                f"📊 *Сигнал ринку {symbol}*\n"
-                f"• Таймфрейм: `{timeframe}`\n"
-                f"• Ціна закриття: `{last_row['close']}`\n"
-                f"• EMA (9): `{last_row['ema_fast']:.2f}`\n"
-                f"• EMA (21): `{last_row['ema_slow']:.2f}`\n"
-                f"• ATR (14): `{last_row['atr']:.2f}`"
-            )
-            
-            bot.send_message(CHAT_ID, message, parse_mode='Markdown')
-            last_processed_candle = current_candle
+            if last_processed_candle != current_candle:
+                last_processed_candle = current_candle
+                price = df.iloc[-1]['close']
+                bot.send_message(CHAT_ID, f"Оновлення {symbol}: ціна {price}")
             
             time.sleep(60)
-
         except Exception as e:
-            print(f"Сталася помилка: {e}")
+            print(f"Помилка: {e}")
             time.sleep(30)
 
-if __name__ == '__main__':
-    t = threading.Thread(target=monitor_market)
-    t.daemon = True
-    t.start()
+threading.Thread(target=monitor_market, daemon=True).start()
 
-    bot.infinity_polling()
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+port = int(os.environ.get("PORT", 10000))
+server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+server.serve_forever()
