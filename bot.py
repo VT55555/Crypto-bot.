@@ -34,8 +34,10 @@ def monitor_market():
             print(f"Помилка: {e}")
             time.sleep(30)
 
+# Запускаємо бота у фоновому потоці
 threading.Thread(target=monitor_market, daemon=True).start()
 
+# Головний процес миттєво запускає веб-сервер для Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
